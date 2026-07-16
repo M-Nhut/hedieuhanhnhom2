@@ -1,0 +1,1657 @@
+<!DOCTYPE html>
+<html lang="vi" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mô phỏng Điều phối Phòng khám: FCFS & Semaphore</title>
+    
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏥</text></svg>" />
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM Production CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel Standalone for Browser compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+      body {
+        background-color: #f8fafc;
+        color: #1e293b;
+        font-family: 'Inter', sans-serif;
+      }
+      
+      /* Custom Scrollbar Styles */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      
+      ::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.02);
+        border-radius: 4px;
+      }
+      
+      ::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.15);
+        border-radius: 4px;
+      }
+      
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(0, 0, 0, 0.25);
+      }
+      
+      /* Glassmorphism Styles */
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+      }
+      
+      .glass-panel-neon-emerald {
+        background: rgba(240, 253, 250, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.05);
+      }
+      
+      .glass-panel-neon-rose {
+        background: rgba(254, 242, 242, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(244, 63, 94, 0.3);
+        box-shadow: 0 4px 15px rgba(244, 63, 94, 0.05);
+      }
+      
+      /* Glow effects */
+      .glow-emerald {
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.08);
+      }
+      
+      .glow-rose {
+        box-shadow: 0 0 20px rgba(244, 63, 94, 0.08);
+      }
+      
+      .glow-cyan {
+        box-shadow: 0 0 20px rgba(14, 165, 233, 0.08);
+      }
+      
+      /* Pulse animation */
+      @keyframes pulse-glow {
+        0%, 100% {
+          opacity: 0.2;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.6;
+          transform: scale(1.05);
+        }
+      }
+      
+      .pulse-indicator {
+        position: relative;
+      }
+      
+      .pulse-indicator::after {
+        content: '';
+        position: absolute;
+        top: -2px;
+        left: -2px;
+        right: -2px;
+        bottom: -2px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: pulse-glow 2s infinite ease-in-out;
+        z-index: -1;
+      }
+      
+      /* Patient card entry animation */
+      @keyframes slide-in {
+        from {
+          opacity: 0;
+          transform: translateX(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      
+      .animate-slide-in {
+        animation: slide-in 0.3s ease-out forwards;
+      }
+    </style>
+  </head>
+  <body class="bg-slate-50 text-slate-800 font-sans antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useCallback, useRef } = React;
+
+      // =========================================================================
+      // SVG ICON HELPER (Replaces lucide-react)
+      // =========================================================================
+      function Icon({ name, size = 16, fill = "none", className = "" }) {
+        const icons = {
+          play: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <polygon points="6 3 20 12 6 21 6 3" />
+            </svg>
+          ),
+          pause: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <rect x="14" y="4" width="4" height="16" rx="1" />
+              <rect x="6" y="4" width="4" height="16" rx="1" />
+            </svg>
+          ),
+          "rotate-ccw": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+          ),
+          "user-plus": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <line x1="19" x2="19" y1="8" y2="14" />
+              <line x1="22" x2="16" y1="11" y2="11" />
+            </svg>
+          ),
+          zap: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+          ),
+          settings: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          ),
+          activity: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
+          ),
+          "flask-conical": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M10 2v8L4.36 20.5A2 2 0 0 0 6.1 23h11.8a2 2 0 0 0 1.74-2.5L14 10V2" />
+              <line x1="8.5" x2="15.5" y1="2" y2="2" />
+              <line x1="6.5" x2="17.5" y1="18" y2="18" />
+            </svg>
+          ),
+          users: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          ),
+          "check-circle": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          ),
+          "check-circle-2": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+          ),
+          "help-circle": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <line x1="12" x2="12.01" y1="17" y2="17" />
+            </svg>
+          ),
+          "maximize-2": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" x2="14" y1="3" y2="10" />
+              <line x1="3" x2="10" y1="21" y2="14" />
+            </svg>
+          ),
+          x: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <line x1="18" x2="6" y1="6" y2="18" />
+              <line x1="6" x2="18" y1="18" y2="6" />
+            </svg>
+          ),
+          stethoscope: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3" />
+              <path d="M8 15v1a6 6 0 0 0 6 6h2a6 6 0 0 0 6-6v-4" />
+              <circle cx="20" cy="10" r="2" />
+            </svg>
+          ),
+          heart: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+            </svg>
+          ),
+          "arrow-up-down": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <line x1="12" x2="12" y1="5" y2="19" />
+              <polyline points="19 12 12 19 5 12" />
+              <polyline points="5 12 12 5 19 12" />
+            </svg>
+          ),
+          cpu: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <rect x="9" y="9" width="6" height="6" />
+              <line x1="9" x2="9" y1="1" y2="4" />
+              <line x1="15" x2="15" y1="1" y2="4" />
+              <line x1="9" x2="9" y1="20" y2="23" />
+              <line x1="15" x2="15" y1="20" y2="23" />
+              <line x1="20" x2="23" y1="9" y2="9" />
+              <line x1="20" x2="23" y1="15" y2="15" />
+              <line x1="1" x2="4" y1="9" y2="9" />
+              <line x1="1" x2="4" y1="15" y2="15" />
+            </svg>
+          ),
+          "book-open": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            </svg>
+          ),
+          terminal: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" x2="20" y1="19" y2="19" />
+            </svg>
+          ),
+          user: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          ),
+          clock: (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          ),
+          "shield-alert": (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <line x1="12" x2="12" y1="8" y2="12" />
+              <line x1="12" x2="12.01" y1="16" y2="16" />
+            </svg>
+          )
+        };
+        return icons[name] || null;
+      }
+
+      // =========================================================================
+      // VIRTUAL CLOCK & PRIORITY LOGIC (Replaces useClinicSimulation.js hook logic)
+      // =========================================================================
+      const formatClock = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      const getPriorityKey = (age, isLabReturn = false) => {
+        if (age > 60 && isLabReturn) return 1;
+        if (age > 60)                return 2;
+        if (age > 40 && isLabReturn) return 3;
+        return 4;
+      };
+
+      const PRIORITY_META = {
+        1: {
+          label: 'Cao tuổi + KQ XN',
+          detail: 'Người >60t, có KQ xét nghiệm',
+          emoji: '🔴',
+          bg: 'bg-red-50',    text: 'text-red-700',    border: 'border-red-300',    dot: 'bg-red-500',
+          ring: 'ring-red-300'
+        },
+        2: {
+          label: 'Cao tuổi',
+          detail: 'Người >60 tuổi',
+          emoji: '🟠',
+          bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-300', dot: 'bg-orange-500',
+          ring: 'ring-orange-300'
+        },
+        3: {
+          label: 'Trung niên + KQ XN',
+          detail: 'Người 40-60t, có KQ xét nghiệm',
+          emoji: '🟡',
+          bg: 'bg-amber-50',  text: 'text-amber-700',  border: 'border-amber-300',  dot: 'bg-amber-500',
+          ring: 'ring-amber-300'
+        },
+        4: {
+          label: 'Thông thường',
+          detail: 'Người ≤40 tuổi',
+          emoji: '🔵',
+          bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-300',   dot: 'bg-blue-400',
+          ring: 'ring-blue-300'
+        },
+      };
+
+      const insertIntoPriorityQueue = (queue, newEntry) => {
+        const result = [...queue];
+        let insertIdx = result.length;
+        for (let i = 0; i < result.length; i++) {
+          const curr = result[i];
+          const isHigherPriority = newEntry.priorityKey < curr.priorityKey;
+          const samePriorityEarlier =
+            newEntry.priorityKey === curr.priorityKey && newEntry.queueTime < curr.queueTime;
+          if (isHigherPriority || samePriorityEarlier) {
+            insertIdx = i;
+            break;
+          }
+        }
+        result.splice(insertIdx, 0, newEntry);
+        return result;
+      };
+
+      const createInitialState = () => ({
+        clock: 0,
+        patients: [],
+        priorityQueue: [],
+        labQueue: [],
+        doctors: [
+          { id: 1, name: 'Thạc sĩ Bác sĩ Tống Hoàng Thing', status: 'AVAILABLE', patientId: null },
+          { id: 2, name: 'PGS.TS.Bác sĩ CKII Nguyễn Thái Tứng', status: 'AVAILABLE', patientId: null }
+        ],
+        semaphoreValue: 2,
+        patientCounter: 0,
+        nextArrivalTimer: 5,
+        logs: [
+          {
+            id: 'init',
+            time: '00:00',
+            text: 'Hệ thống khởi tạo. Semaphore = 2. Priority Queue 4 cấp + FCFS tie-breaking sẵn sàng.'
+          }
+        ],
+        isPlaying: false,
+        speedMultiplier: 1,
+        autoGenerate: false
+      });
+
+      const useClinicSimulation = () => {
+        const [state, setState] = useState(createInitialState);
+
+        const resetSimulation = useCallback(() => setState(createInitialState()), []);
+        const setPlaying = useCallback((isPlaying) => setState(prev => ({ ...prev, isPlaying })), []);
+        const setSpeedMultiplier = useCallback((speed) => setState(prev => ({ ...prev, speedMultiplier: speed })), []);
+        const setAutoGenerate = useCallback((enabled) => {
+          setState(prev => ({
+            ...prev,
+            autoGenerate: enabled,
+            nextArrivalTimer: enabled ? Math.floor(Math.random() * 7) + 6 : prev.nextArrivalTimer
+          }));
+        }, []);
+
+        const dispatchPatients = useCallback((patients, priorityQueue, doctors, semaphoreValue, clock, addLog) => {
+          const nextQueue = [...priorityQueue];
+          const nextPatients = patients.map(p => ({ ...p }));
+          const nextDoctors = doctors.map(d => ({ ...d }));
+          let nextSemaphoreValue = semaphoreValue;
+
+          let roomAvailable = nextDoctors.some(d => d.status === 'AVAILABLE');
+
+          while (nextSemaphoreValue > 0 && nextQueue.length > 0 && roomAvailable) {
+            const entry = nextQueue[0];
+            const { patientId, priorityKey } = entry;
+            const pIdx = nextPatients.findIndex(p => p.id === patientId);
+
+            if (pIdx !== -1) {
+              const freeDocIdx = nextDoctors.findIndex(d => d.status === 'AVAILABLE');
+              if (freeDocIdx !== -1) {
+                nextSemaphoreValue--;
+                nextQueue.shift();
+
+                nextDoctors[freeDocIdx].status = 'BUSY';
+                nextDoctors[freeDocIdx].patientId = patientId;
+
+                const p = nextPatients[pIdx];
+                nextPatients[pIdx] = {
+                  ...p,
+                  startTime: clock,
+                  status: 'CONSULTING',
+                  doctorId: nextDoctors[freeDocIdx].id
+                };
+
+                const returnTag = p.isLabReturn ? ' [KQ XN]' : '';
+                addLog(
+                  `[P${priorityKey} ${PRIORITY_META[priorityKey].label}${returnTag}] P${patientId} (${p.age}t) vào Phòng ${nextDoctors[freeDocIdx].id} — Semaphore ↓ còn ${nextSemaphoreValue}.`
+                );
+              } else {
+                break;
+              }
+            } else {
+              nextQueue.shift();
+            }
+            roomAvailable = nextDoctors.some(d => d.status === 'AVAILABLE');
+          }
+
+          nextQueue.forEach(entry => {
+            const pIdx = nextPatients.findIndex(p => p.id === entry.patientId);
+            if (pIdx !== -1) nextPatients[pIdx].status = 'BLOCKED';
+          });
+
+          return { patients: nextPatients, priorityQueue: nextQueue, doctors: nextDoctors, semaphoreValue: nextSemaphoreValue };
+        }, []);
+
+        const addPatient = useCallback((burstTime) => {
+          setState(prev => {
+            const nextPatientCounter = prev.patientCounter + 1;
+            const age = Math.floor(Math.random() * 73) + 18; // 18–90
+            const priorityKey = getPriorityKey(age, false);
+
+            const newPatient = {
+              id: nextPatientCounter,
+              age,
+              priorityKey,
+              isLabReturn: false,
+              arrivalTime: prev.clock,
+              burstTime,
+              remainingBurstTime: burstTime,
+              startTime: null,
+              endTime: null,
+              firstConsultStart: null,
+              firstConsultEnd: null,
+              labStartTime: null,
+              status: 'BLOCKED',
+              doctorId: null
+            };
+
+            const currentPatients = [...prev.patients, newPatient];
+            const entry = { patientId: newPatient.id, priorityKey, queueTime: prev.clock };
+            const currentQueue = insertIntoPriorityQueue(prev.priorityQueue, entry);
+            const nextLogs = [...prev.logs];
+
+            const addLog = (text) => nextLogs.push({
+              id: Math.random().toString(36).substring(2, 9),
+              time: formatClock(prev.clock),
+              text
+            });
+
+            addLog(
+              `Bệnh nhân P${newPatient.id} (${age} tuổi → P${priorityKey}: ${PRIORITY_META[priorityKey].label}, Burst: ${burstTime}s) vào sảnh chờ.`
+            );
+
+            const dispatched = dispatchPatients(currentPatients, currentQueue, prev.doctors, prev.semaphoreValue, prev.clock, addLog);
+
+            return {
+              ...prev,
+              patients: dispatched.patients,
+              priorityQueue: dispatched.priorityQueue,
+              doctors: dispatched.doctors,
+              semaphoreValue: dispatched.semaphoreValue,
+              patientCounter: nextPatientCounter,
+              logs: nextLogs
+            };
+          });
+        }, [dispatchPatients]);
+
+        const tick = useCallback(() => {
+          setState(prev => {
+            if (!prev.isPlaying) return prev;
+
+            const nextClock = prev.clock + 1;
+            let nextPatients = prev.patients.map(p => ({ ...p }));
+            let nextDoctors = prev.doctors.map(d => ({ ...d }));
+            let nextQueue = [...prev.priorityQueue];
+            let nextLabQueue = prev.labQueue.map(e => ({ ...e, remainingLabTime: e.remainingLabTime - 1 }));
+            const nextLogs = [...prev.logs];
+            let nextSemaphoreValue = prev.semaphoreValue;
+
+            const addLog = (text) => nextLogs.push({
+              id: Math.random().toString(36).substring(2, 9),
+              time: formatClock(nextClock),
+              text
+            });
+
+            nextDoctors = nextDoctors.map(doc => {
+              if (doc.status === 'BUSY' && doc.patientId !== null) {
+                const pIdx = nextPatients.findIndex(p => p.id === doc.patientId);
+                if (pIdx !== -1) {
+                  const patient = nextPatients[pIdx];
+                  const updatedRemaining = patient.remainingBurstTime - 1;
+
+                  if (updatedRemaining <= 0) {
+                    doc.status = 'AVAILABLE';
+                    doc.patientId = null;
+                    nextSemaphoreValue = Math.min(2, nextSemaphoreValue + 1);
+
+                    const canGoToLab = !patient.isLabReturn && patient.age > 40;
+                    const goesToLab = canGoToLab && Math.random() < 0.40;
+
+                    if (goesToLab) {
+                      const labTime = Math.floor(Math.random() * 11) + 10;
+                      nextPatients[pIdx] = {
+                        ...patient,
+                        remainingBurstTime: 0,
+                        firstConsultStart: patient.startTime,
+                        firstConsultEnd: nextClock,
+                        labStartTime: nextClock,
+                        startTime: null,
+                        endTime: null,
+                        status: 'IN_LAB',
+                        doctorId: null
+                      };
+                      nextLabQueue.push({ patientId: patient.id, remainingLabTime: labTime, totalLabTime: labTime });
+
+                      addLog(
+                        `P${patient.id} (${patient.age}t) xong khám → đi lấy KQ xét nghiệm (${labTime}s). Semaphore ↑ ${nextSemaphoreValue}.`
+                      );
+                    } else {
+                      nextPatients[pIdx] = {
+                        ...patient,
+                        remainingBurstTime: 0,
+                        endTime: nextClock,
+                        status: 'COMPLETED'
+                      };
+                      addLog(
+                        `P${patient.id} (${patient.age}t) hoàn thành khám và ra về. Semaphore ↑ ${nextSemaphoreValue}.`
+                      );
+                    }
+                  } else {
+                    nextPatients[pIdx] = { ...patient, remainingBurstTime: updatedRemaining };
+                  }
+                }
+              }
+              return doc;
+            });
+
+            const labDone = nextLabQueue.filter(e => e.remainingLabTime <= 0);
+            nextLabQueue = nextLabQueue.filter(e => e.remainingLabTime > 0);
+
+            labDone.forEach(entry => {
+              const pIdx = nextPatients.findIndex(p => p.id === entry.patientId);
+              if (pIdx !== -1) {
+                const p = nextPatients[pIdx];
+                const newPriority = getPriorityKey(p.age, true);
+                const returnBurst = Math.floor(Math.random() * 6) + 5;
+
+                nextPatients[pIdx] = {
+                  ...p,
+                  isLabReturn: true,
+                  priorityKey: newPriority,
+                  burstTime: returnBurst,
+                  remainingBurstTime: returnBurst,
+                  startTime: null,
+                  status: 'BLOCKED'
+                };
+
+                const qEntry = { patientId: p.id, priorityKey: newPriority, queueTime: nextClock };
+                nextQueue = insertIntoPriorityQueue(nextQueue, qEntry);
+
+                addLog(
+                  `[KQ XN TRẢ VỀ] P${p.id} (${p.age}t) có kết quả → Ưu tiên ${newPriority}: ${PRIORITY_META[newPriority].label}.`
+                );
+              }
+            });
+
+            let nextPatientCounter = prev.patientCounter;
+            let nextArrivalTimer = prev.nextArrivalTimer;
+
+            if (prev.autoGenerate) {
+              nextArrivalTimer -= 1;
+              if (nextArrivalTimer <= 0) {
+                nextPatientCounter += 1;
+                const randomBurst = Math.floor(Math.random() * 8) + 8;
+                const age = Math.floor(Math.random() * 73) + 18; // 18–90
+                const priorityKey = getPriorityKey(age, false);
+
+                const newPatient = {
+                  id: nextPatientCounter,
+                  age,
+                  priorityKey,
+                  isLabReturn: false,
+                  arrivalTime: nextClock,
+                  burstTime: randomBurst,
+                  remainingBurstTime: randomBurst,
+                  startTime: null, endTime: null,
+                  firstConsultStart: null, firstConsultEnd: null, labStartTime: null,
+                  status: 'BLOCKED',
+                  doctorId: null
+                };
+
+                nextPatients.push(newPatient);
+                const qEntry = { patientId: newPatient.id, priorityKey, queueTime: nextClock };
+                nextQueue = insertIntoPriorityQueue(nextQueue, qEntry);
+
+                addLog(`[Auto] P${newPatient.id} (${age}t → P${priorityKey}: ${PRIORITY_META[priorityKey].label}) vào sảnh chờ.`);
+                nextArrivalTimer = Math.floor(Math.random() * 7) + 6;
+              }
+            }
+
+            const dispatched = dispatchPatients(nextPatients, nextQueue, nextDoctors, nextSemaphoreValue, nextClock, addLog);
+
+            return {
+              ...prev,
+              clock: nextClock,
+              patients: dispatched.patients,
+              priorityQueue: dispatched.priorityQueue,
+              labQueue: nextLabQueue,
+              doctors: dispatched.doctors,
+              semaphoreValue: dispatched.semaphoreValue,
+              patientCounter: nextPatientCounter,
+              nextArrivalTimer,
+              logs: nextLogs
+            };
+          });
+        }, [dispatchPatients]);
+
+        useEffect(() => {
+          if (!state.isPlaying) return;
+          const id = setInterval(tick, 1000 / state.speedMultiplier);
+          return () => clearInterval(id);
+        }, [state.isPlaying, state.speedMultiplier, tick]);
+
+        return { state, addPatient, resetSimulation, setPlaying, setSpeedMultiplier, setAutoGenerate };
+      };
+
+      // =========================================================================
+      // 1. TERMINAL LOG COMPONENT
+      // =========================================================================
+      function TerminalLog({ logs }) {
+        const containerRef = useRef(null);
+
+        useEffect(() => {
+          if (containerRef.current) {
+            containerRef.current.scrollTop = containerRef.current.scrollHeight;
+          }
+        }, [logs]);
+
+        return (
+          <div className="flex flex-col gap-2 flex-1 min-h-[160px]">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <Icon name="terminal" className="text-slate-500" /> Nhật ký hệ thống
+              </span>
+              <span className="text-[9px] text-slate-400 font-mono">
+                Sự kiện định thời ảo
+              </span>
+            </div>
+
+            <div ref={containerRef} className="flex-1 bg-slate-900 border border-slate-950 rounded-xl p-4 font-mono text-[11px] text-slate-200 overflow-y-auto max-h-[220px] select-text shadow-inner">
+              <div className="flex flex-col gap-2">
+                {logs.map((log) => {
+                  const isSemaphoreDec = log.text.includes('Semaphore decremented') || log.text.includes('Semaphore giảm');
+                  const isSemaphoreInc = log.text.includes('Semaphore incremented') || log.text.includes('Semaphore tăng');
+                  const isComplete = log.text.includes('completed') || log.text.includes('hoàn thành');
+                  
+                  let colorClass = 'text-slate-300';
+                  if (isSemaphoreDec) colorClass = 'text-amber-450 font-medium';
+                  else if (isSemaphoreInc) colorClass = 'text-emerald-400 font-medium';
+                  else if (isComplete) colorClass = 'text-sky-450 font-medium';
+
+                  return (
+                    <div key={log.id} className="flex gap-2.5 leading-relaxed border-b border-slate-800/40 pb-1.5 last:border-0 last:pb-0">
+                      <span className="text-sky-400 font-semibold flex-shrink-0">
+                        [{log.time}s]
+                      </span>
+                      <span className={colorClass}>{log.text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // =========================================================================
+      // 2. GANTT CHART COMPONENTS
+      // =========================================================================
+      const DOT_COLORS  = { 1: '#ef4444', 2: '#f97316', 3: '#f59e0b', 4: '#3b82f6' };
+      const BAR_FILL    = { 1: '#fecaca', 2: '#fed7aa', 3: '#fde68a', 4: '#bfdbfe' };
+      const BAR_STROKE  = { 1: '#f87171', 2: '#fb923c', 3: '#fbbf24', 4: '#60a5fa' };
+      const LANE_BG     = { 1: '#fff1f2', 2: '#fff7ed', 3: '#fffbeb', 4: '#eff6ff' };
+      const LANE_HEADER = { 1: '#fee2e2', 2: '#ffedd5', 3: '#fef3c7', 4: '#dbeafe' };
+
+      function TooltipCard({ patient: p, clock }) {
+        const meta  = PRIORITY_META[p.priorityKey] || PRIORITY_META[4];
+        const color = DOT_COLORS[p.priorityKey];
+        const waitTime    = p.startTime !== null ? p.startTime - p.arrivalTime : clock - p.arrivalTime;
+        const consultTime = p.startTime !== null ? (p.endTime || clock) - p.startTime : null;
+        return (
+          <div className="bg-white border border-slate-200 shadow-2xl rounded-xl p-3 min-w-[220px] text-[11px] pointer-events-none"
+            style={{ borderLeft: `4px solid ${color}` }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-mono font-black text-slate-800 text-sm">P{p.id}</span>
+              <span className="font-semibold" style={{ color }}>{meta.emoji} Ưu tiên {p.priorityKey}</span>
+              {p.isLabReturn && <span className="bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded text-[9px] font-bold">KQ XN</span>}
+            </div>
+            <div className="flex flex-col gap-1 text-slate-600">
+              <TRow label="Tuổi"      value={`${p.age} tuổi`} />
+              <TRow label="Phân loại" value={meta.label}  valueColor={color} />
+              <TRow label="Lý do"     value={meta.detail} />
+              <div className="border-t border-slate-100 mt-1 pt-1 flex flex-col gap-1">
+                <TRow label="Đến lúc"     value={`${p.arrivalTime}s`} mono />
+                <TRow label="⏳ Chờ"      value={`${waitTime}s`}      mono bold labelColor="#d97706" valueColor="#d97706" />
+                {consultTime !== null && <TRow label="🩺 Khám" value={`${consultTime}s`} mono bold labelColor="#0891b2" valueColor="#0891b2" />}
+              </div>
+              {p.status === 'COMPLETED'  && <div className="text-emerald-600 font-bold text-center mt-1">✓ Đã hoàn thành</div>}
+              {p.status === 'IN_LAB'     && <div className="text-violet-600  font-bold text-center mt-1">🧪 Đang chờ KQ XN</div>}
+              {p.status === 'CONSULTING' && <div className="text-cyan-600    font-bold text-center mt-1">🩺 Đang khám</div>}
+              {p.status === 'BLOCKED'    && <div className="text-amber-600   font-bold text-center mt-1">⏳ Đang xếp hàng</div>}
+            </div>
+          </div>
+        );
+      }
+
+      function TRow({ label, value, mono, bold, labelColor, valueColor }) {
+        return (
+          <div className="flex justify-between gap-4">
+            <span style={{ color: labelColor }} className={labelColor ? 'font-semibold' : 'text-slate-400'}>{label}</span>
+            <span style={{ color: valueColor }} className={`${bold ? 'font-bold' : 'font-semibold'} ${mono ? 'font-mono' : ''} text-right`}>{value}</span>
+          </div>
+        );
+      }
+
+      function LaneGantt({ patients, clock, isLarge, onTooltip }) {
+        const maxTime    = Math.max(25, clock + 3);
+        const pxPerSec   = isLarge ? 16 : 9;
+        const chartWidth = maxTime * pxPerSec;
+        const labelW     = isLarge ? 108 : 62;
+        const rowH       = isLarge ? 40 : 28;
+        const barH       = isLarge ? 17 : 12;
+        const headerH    = isLarge ? 24 : 18;
+        const gapH       = isLarge ? 8  : 5;
+
+        const arrived = patients.filter(p => p.arrivalTime <= clock);
+        const lanes   = [1, 2, 3, 4].map(pk => ({
+          pk,
+          patients: arrived.filter(p => p.priorityKey === pk),
+        }));
+
+        const laneY = [];
+        let curY = 0;
+        lanes.forEach(lane => {
+          laneY.push(curY);
+          curY += headerH + Math.max(1, lane.patients.length) * rowH + gapH;
+        });
+        const axisY  = curY;
+        const totalH = axisY + 20;
+
+        if (arrived.length === 0) {
+          return (
+            <div className="h-full flex items-center justify-center text-slate-400 text-[10px] py-10">
+              Chưa có dữ liệu định thời.
+            </div>
+          );
+        }
+
+        return (
+          <div style={{ width: `${chartWidth + labelW}px`, position: 'relative' }} className="font-mono select-none">
+            <svg width={chartWidth + labelW} height={totalH} className="overflow-visible">
+              <defs>
+                <linearGradient id="wg" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%"   stopColor="#f59e0b" stopOpacity="0.75" />
+                  <stop offset="100%" stopColor="#d97706" stopOpacity="0.95" />
+                </linearGradient>
+              </defs>
+
+              {Array.from({ length: Math.ceil(maxTime / 5) + 1 }).map((_, i) => {
+                const sec = i * 5;
+                const x   = labelW + sec * pxPerSec;
+                return (
+                  <g key={sec}>
+                    <line x1={x} y1={0} x2={x} y2={axisY} stroke="#e2e8f0" strokeDasharray="2 3" />
+                    <text x={x} y={axisY + 13} textAnchor="middle" fill="#94a3b8" fontSize={isLarge ? 10 : 8} fontWeight="600">
+                      {sec}s
+                    </text>
+                  </g>
+                );
+              })}
+
+              {(() => {
+                const cx = labelW + Math.min(clock, maxTime) * pxPerSec;
+                return <line x1={cx} y1={0} x2={cx} y2={axisY} stroke="#0ea5e9" strokeWidth="1.5" strokeDasharray="4 2" opacity="0.6" />;
+              })()}
+
+              {lanes.map((lane, li) => {
+                const meta   = PRIORITY_META[lane.pk];
+                const color  = DOT_COLORS[lane.pk];
+                const bgFill = LANE_BG[lane.pk];
+                const hFill  = LANE_HEADER[lane.pk];
+                const ly     = laneY[li];
+                const laneH  = headerH + Math.max(1, lane.patients.length) * rowH;
+
+                return (
+                  <g key={lane.pk}>
+                    <rect x={0} y={ly} width={chartWidth + labelW} height={laneH} fill={bgFill} rx="5" opacity="0.55" />
+                    <rect x={0} y={ly} width={chartWidth + labelW} height={headerH} fill={hFill} rx="5" />
+                    <rect x={0} y={ly + headerH / 2} width={chartWidth + labelW} height={headerH / 2} fill={hFill} />
+                    <circle cx={9} cy={ly + headerH / 2} r={isLarge ? 5 : 3.5} fill={color} />
+                    <text x={19} y={ly + headerH / 2 + (isLarge ? 4 : 3.5)} fill={color} fontSize={isLarge ? 11 : 8.5} fontWeight="800">
+                      {meta.emoji}  Ưu tiên {lane.pk} — {meta.label}
+                    </text>
+                    <text x={chartWidth + labelW - 5} y={ly + headerH / 2 + (isLarge ? 4 : 3.5)}
+                      textAnchor="end" fill={color} fontSize={isLarge ? 10 : 8} fontWeight="700">
+                      {lane.patients.length > 0 ? `${lane.patients.length} BN` : 'Trống'}
+                    </text>
+
+                    {lane.patients.length === 0 && (
+                      <text x={labelW + 8} y={ly + headerH + rowH / 2 + 4}
+                        fill="#cbd5e1" fontSize={isLarge ? 10 : 8} fontStyle="italic">
+                        Chưa có bệnh nhân trong nhóm này
+                      </text>
+                    )}
+
+                    {lane.patients.map((p, pi) => {
+                      const ry      = ly + headerH + pi * rowH;
+                      const barY    = ry + (rowH - barH) / 2;
+                      const midTextY = barY + barH / 2 + 3.5;
+
+                      const waitEnd = p.startTime !== null ? p.startTime : clock;
+                      const waitW   = Math.max(0, waitEnd - p.arrivalTime) * pxPerSec;
+                      const waitX   = labelW + p.arrivalTime * pxPerSec;
+
+                      let runW = 0, runX = 0;
+                      if (p.startTime !== null) {
+                        runX = labelW + p.startTime * pxPerSec;
+                        const runEnd = p.endTime !== null ? p.endTime : clock;
+                        runW = Math.max(0, runEnd - p.startTime) * pxPerSec;
+                      }
+
+                      const handleMove = onTooltip ? (e) => {
+                        const rect = e.currentTarget.closest('svg').getBoundingClientRect();
+                        onTooltip({ x: e.clientX - rect.left + 14, y: e.clientY - rect.top - 10, patient: p });
+                      } : undefined;
+
+                      return (
+                        <g key={p.id} className="group"
+                          onMouseMove={handleMove}
+                          onMouseLeave={onTooltip ? () => onTooltip(null) : undefined}
+                          style={{ cursor: onTooltip ? 'pointer' : 'default' }}>
+
+                          <rect x={0} y={ry} width={chartWidth + labelW} height={rowH}
+                            fill="transparent"
+                            className="group-hover:fill-black/[0.03] transition-colors duration-100" />
+
+                          <text x={4} y={ry + rowH / 2 + (isLarge ? 4 : 3)} fill="#0369a1" fontWeight="bold" fontSize={isLarge ? 10 : 8}>
+                            P{p.id}
+                          </text>
+                          <text x={4} y={ry + rowH / 2 + (isLarge ? 15 : 12)} fill={color} fontSize={isLarge ? 8 : 6.5} fontWeight="600">
+                            {p.age}t{p.isLabReturn ? ' ★' : ''}
+                          </text>
+
+                          {waitW > 0 && (
+                            <rect x={waitX} y={barY} width={waitW} height={barH}
+                              fill="url(#wg)" stroke="rgba(245,158,11,0.4)" strokeWidth="1" rx="3" />
+                          )}
+
+                          {runW > 0 && (
+                            <rect x={runX} y={barY} width={runW} height={barH}
+                              fill={p.isLabReturn ? '#ddd6fe' : (BAR_FILL[lane.pk] || '#bfdbfe')}
+                              stroke={p.isLabReturn ? '#a78bfa' : (BAR_STROKE[lane.pk] || '#60a5fa')}
+                              strokeWidth="1" rx="3"
+                              className="transition-all duration-300" />
+                          )}
+
+                          {runW > 22 && p.isLabReturn && (
+                            <text x={runX + runW / 2} y={midTextY} textAnchor="middle"
+                              fill="#7c3aed" fontSize="7" fontWeight="bold">KQ XN</text>
+                          )}
+
+                          {!onTooltip && (
+                            <text x={Math.max(waitX + waitW, runX + runW) + 3} y={barY + barH / 2 + 3}
+                              fill="#64748b" fontSize="7" fontWeight="600"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                              {p.startTime !== null
+                                ? `Chờ:${p.startTime - p.arrivalTime}s Khám:${(p.endTime || clock) - p.startTime}s`
+                                : `Chờ:${clock - p.arrivalTime}s`}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+
+                    {li < 3 && (
+                      <line x1={0} y1={ly + laneH + gapH / 2} x2={chartWidth + labelW} y2={ly + laneH + gapH / 2}
+                        stroke="#e2e8f0" strokeWidth="1" />
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        );
+      }
+
+      function GanttChart({ patients, clock }) {
+        const containerRef      = useRef(null);
+        const modalContainerRef = useRef(null);
+        const [isModalOpen, setIsModalOpen] = useState(false);
+        const [tooltip, setTooltip]         = useState(null);
+
+        useEffect(() => {
+          if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        }, [patients.length]);
+
+        useEffect(() => {
+          if (isModalOpen && modalContainerRef.current)
+            modalContainerRef.current.scrollTop = modalContainerRef.current.scrollHeight;
+        }, [patients.length, isModalOpen]);
+
+        return (
+          <div className="flex flex-col gap-2 h-full">
+            <div className="flex justify-between items-center text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-700">Biểu đồ Gantt — 4 Hàng Ưu Tiên</span>
+                <button onClick={() => setIsModalOpen(true)}
+                  className="p-1 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-700 transition-all flex items-center justify-center cursor-pointer shadow-sm border border-slate-200/50 bg-white"
+                  title="Mở rộng biểu đồ">
+                  <Icon name="maximize-2" size={12} />
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                {[['bg-amber-500/80','border-amber-400/20','Thời gian chờ'],['bg-blue-400/80','border-blue-300/20','Thời gian khám'],['bg-violet-400/80','border-violet-300/20','KQ XN']].map(([bg,brd,lbl]) => (
+                  <div key={lbl} className="flex items-center gap-1">
+                    <span className={`w-2.5 h-2.5 rounded-sm ${bg} border ${brd}`} />
+                    <span className="text-[10px] text-slate-500 font-medium">{lbl}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div ref={containerRef} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 overflow-auto max-h-[300px] min-h-[180px] shadow-inner">
+              <LaneGantt patients={patients} clock={clock} isLarge={false} onTooltip={null} />
+            </div>
+
+            {isModalOpen && (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col p-6 overflow-hidden">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-800">Biểu đồ Gantt — 4 Hàng Đợi Ưu Tiên</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">Di chuột vào từng bệnh nhân để xem chi tiết · Phân nhóm theo P1 → P4</p>
+                    </div>
+                    <button onClick={() => { setIsModalOpen(false); setTooltip(null); }}
+                      className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-all cursor-pointer flex items-center justify-center shadow-sm">
+                      <Icon name="x" size={16} />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 py-3 px-2 border-b border-slate-100 mb-3">
+                    {[1,2,3,4].map(pk => (
+                      <span key={pk}
+                        className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border"
+                        style={{ backgroundColor: DOT_COLORS[pk]+'18', color: DOT_COLORS[pk], borderColor: DOT_COLORS[pk]+'55' }}>
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: DOT_COLORS[pk] }} />
+                        {PRIORITY_META[pk].emoji} P{pk} — {PRIORITY_META[pk].label}
+                      </span>
+                    ))}
+                    <div className="flex items-center gap-1 ml-auto">
+                      <span className="w-3 h-3 rounded-sm bg-amber-500/80 border border-amber-400/20" /><span className="text-[10px] text-slate-500 font-medium">Chờ</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded-sm bg-blue-400/80 border border-blue-300/20" /><span className="text-[10px] text-slate-500 font-medium">Khám</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded-sm bg-violet-400/80 border border-violet-300/20" /><span className="text-[10px] text-slate-500 font-medium">KQ XN</span>
+                    </div>
+                    <span className="font-mono text-xs font-bold text-cyan-600 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">{clock}s</span>
+                  </div>
+
+                  <div ref={modalContainerRef}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 overflow-auto min-h-[300px] shadow-inner relative">
+                    <LaneGantt patients={patients} clock={clock} isLarge={true} onTooltip={setTooltip} />
+                    {tooltip && (
+                      <div className="absolute z-50" style={{ left: tooltip.x, top: tooltip.y, maxWidth: 260 }}>
+                        <TooltipCard patient={tooltip.patient} clock={clock} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // =========================================================================
+      // 3. SIMULATION ARENA COMPONENT
+      // =========================================================================
+      function SimulationArena({ state }) {
+        const { patients, priorityQueue, labQueue, doctors, clock, semaphoreValue } = state;
+
+        return (
+          <div className="flex flex-col gap-6 h-full">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {doctors.map((doc) => {
+                const isBusy = doc.status === 'BUSY';
+                const patient = isBusy ? patients.find(p => p.id === doc.patientId) : null;
+                const progress = patient
+                  ? ((patient.burstTime - patient.remainingBurstTime) / patient.burstTime) * 100
+                  : 0;
+                const pMeta = patient ? PRIORITY_META[patient.priorityKey] : null;
+
+                return (
+                  <div
+                    key={doc.id}
+                    className={`glass-panel rounded-2xl p-6 transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[195px] ${
+                      isBusy ? 'glass-panel-neon-rose border-rose-500/20' : 'glass-panel-neon-emerald border-emerald-500/20'
+                    }`}
+                  >
+                    <div className={`absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl opacity-10 ${isBusy ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+
+                    <div className="flex items-center justify-between z-10">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-xl ${isBusy ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                          <Icon name="stethoscope" size={20} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-xs md:text-sm text-slate-800 truncate" title={doc.name}>{doc.name}</h4>
+                          <span className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase">Phòng {doc.id} • Tài nguyên #{doc.id}</span>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${isBusy ? 'bg-rose-100 border-rose-200 text-rose-700' : 'bg-emerald-100 border-emerald-200 text-emerald-700'}`}>
+                        {isBusy ? 'ĐANG KHÁM' : 'SẴN SÀNG'}
+                      </span>
+                    </div>
+
+                    {isBusy && patient ? (
+                      <div className="mt-3 flex flex-col gap-2 z-10">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center font-mono font-bold text-rose-700 border border-rose-200 text-sm">
+                              P{patient.id}
+                            </span>
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-semibold text-slate-700">P{patient.id}</span>
+                                <span className="text-[10px] text-slate-500">• {patient.age} tuổi</span>
+                                {patient.isLabReturn && (
+                                  <span className="text-[9px] bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded font-bold">
+                                    KQ XN
+                                  </span>
+                                )}
+                              </div>
+                              {pMeta && (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border w-fit mt-0.5 ${pMeta.bg} ${pMeta.text} ${pMeta.border}`}>
+                                  {pMeta.emoji} P{patient.priorityKey} {pMeta.label}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-3 py-1 rounded-lg">
+                            <Icon name="clock" size={12} className="text-rose-600" />
+                            <span className="font-mono text-xs font-bold text-rose-700">Còn {patient.remainingBurstTime}s</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
+                            <div
+                              className="bg-gradient-to-r from-rose-500 to-pink-500 h-full rounded-full transition-all duration-300 ease-linear"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[9px] text-slate-400 font-mono">
+                            <span>Bắt đầu: {formatClock(patient.startTime)}</span>
+                            <span>Tổng: {patient.burstTime}s</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 flex flex-col items-center justify-center flex-1 z-10 border border-dashed border-emerald-200 rounded-xl bg-emerald-50/30">
+                        <span className="text-xs text-emerald-600 font-semibold tracking-wide flex items-center gap-1.5">
+                          <Icon name="heart" size={12} className="animate-pulse" /> Trống / Chờ bệnh nhân
+                        </span>
+                        <span className="text-[10px] text-slate-450 mt-0.5">Có sẵn quyền Semaphore</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {labQueue.length > 0 && (
+              <div className="glass-panel rounded-2xl p-5 border border-violet-200 bg-violet-50/30 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-violet-800 flex items-center gap-2">
+                    <Icon name="flask-conical" size={15} className="text-violet-500" />
+                    Khu Xét Nghiệm
+                  </h3>
+                  <span className="text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200 px-3 py-1 rounded-lg">
+                    {labQueue.length} bệnh nhân đang chờ KQ
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {labQueue.map(entry => {
+                    const patient = patients.find(p => p.id === entry.patientId);
+                    if (!patient) return null;
+                    const progress = ((entry.totalLabTime - entry.remainingLabTime) / entry.totalLabTime) * 100;
+                    const returnPriority = patient.age > 60 ? 1 : 3;
+                    const returnMeta = PRIORITY_META[returnPriority];
+                    return (
+                      <div key={entry.patientId} className="flex flex-col gap-2 p-3 bg-white border border-violet-200 rounded-xl shadow-sm flex-1 min-w-[160px]">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Icon name="flask-conical" size={14} className="text-violet-500 animate-pulse" />
+                            <div>
+                              <span className="font-mono text-xs font-bold text-slate-700">P{patient.id}</span>
+                              <span className="text-[10px] text-slate-400 ml-1">({patient.age} tuổi)</span>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-bold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded">
+                            Còn {entry.remainingLabTime}s
+                          </span>
+                        </div>
+                        <div className="w-full bg-violet-100 rounded-full h-1.5 overflow-hidden border border-violet-200">
+                          <div
+                            className="bg-gradient-to-r from-violet-500 to-purple-500 h-full rounded-full transition-all duration-300 ease-linear"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1 text-[9px] text-violet-600">
+                          <Icon name="check-circle-2" size={9} />
+                          <span>Sẽ trở về với: <strong className={`${returnMeta.text}`}>{returnMeta.emoji} P{returnPriority} {returnMeta.label}</strong></span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="glass-panel rounded-2xl p-6 border border-slate-200 flex-1 flex flex-col gap-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div className="flex flex-col">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                    <Icon name="arrow-up-down" size={14} className="text-slate-500" />
+                    Sảnh chờ khám
+                  </h3>
+                  <span className="text-xs text-slate-500 mt-0.5">
+                    Priority Queue (4 cấp) • Tie-breaking: FCFS
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {semaphoreValue === 0 && priorityQueue.length > 0 && (
+                    <div className="flex items-center gap-1 text-[10px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-md">
+                      <Icon name="shield-alert" size={10} />
+                      <span>SEMAPHORE BỊ KHÓA</span>
+                    </div>
+                  )}
+                  <span className="text-xs text-slate-600 font-semibold bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                    Chờ: {priorityQueue.length}
+                  </span>
+                </div>
+              </div>
+
+              {priorityQueue.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {[1, 2, 3, 4].map(pk => {
+                    const count = priorityQueue.filter(e => e.priorityKey === pk).length;
+                    if (count === 0) return null;
+                    const m = PRIORITY_META[pk];
+                    return (
+                      <span key={pk} className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${m.bg} ${m.text} ${m.border}`}>
+                        {m.emoji} P{pk}: {count} người
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex-1 flex items-center justify-center p-2 overflow-y-auto">
+                {priorityQueue.length === 0 ? (
+                  <div className="text-center flex flex-col items-center gap-2 py-8">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-450">
+                      <Icon name="user" size={20} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600">Sảnh chờ đang trống</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Kích hoạt bộ tạo tự động hoặc thêm bệnh nhân thủ công.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full h-full flex flex-col md:flex-row md:flex-wrap items-start content-start gap-3 overflow-y-auto max-h-[380px] pr-2">
+                    {priorityQueue.map((entry, idx) => {
+                      const patient = patients.find(p => p.id === entry.patientId);
+                      if (!patient) return null;
+                      const meta = PRIORITY_META[entry.priorityKey];
+                      const currentWait = clock - patient.arrivalTime;
+                      const isFirst = idx === 0;
+
+                      return (
+                        <div
+                          key={patient.id}
+                          className={`animate-slide-in flex items-center gap-3 p-3 border rounded-xl transition-all duration-200 w-full md:w-[calc(50%-6px)] lg:w-[calc(33.33%-8px)] shadow-sm ${
+                            isFirst
+                              ? `${meta.bg} ${meta.border} ring-1 ring-offset-1 ${meta.ring}`
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className={`flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold border ${
+                            isFirst ? `${meta.bg} ${meta.text} ${meta.border}` : 'bg-slate-100 border-slate-200 text-slate-500'
+                          }`}>
+                            {idx + 1}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-xs font-bold text-slate-700">P{patient.id}</span>
+                                {patient.isLabReturn && (
+                                  <span className="text-[8px] bg-violet-100 text-violet-700 border border-violet-200 px-1 py-0.5 rounded font-bold">KQ XN</span>
+                                )}
+                              </div>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${meta.bg} ${meta.text} ${meta.border}`}>
+                                {meta.emoji} P{entry.priorityKey}
+                              </span>
+                            </div>
+                            <div className="flex flex-col gap-0.5 text-[9px] text-slate-500">
+                              <span className={`font-semibold ${meta.text}`}>{meta.label}</span>
+                              <div className="flex items-center justify-between">
+                                <span>{patient.age} tuổi • {patient.burstTime}s</span>
+                                <span className="flex items-center gap-1 font-mono text-amber-650 font-semibold">
+                                  <Icon name="clock" size={9} /> Chờ {currentWait}s
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // =========================================================================
+      // 4. CONTROL CENTER COMPONENT
+      // =========================================================================
+      function ControlCenter({
+        state,
+        addPatient,
+        resetSimulation,
+        setPlaying,
+        setSpeedMultiplier,
+        setAutoGenerate
+      }) {
+        const [burstInput, setBurstInput] = useState('10');
+        const { isPlaying, speedMultiplier, autoGenerate, semaphoreValue, priorityQueue, labQueue } = state;
+
+        const handleManualAdd = (e) => {
+          e.preventDefault();
+          const burstTime = parseInt(burstInput, 10);
+          if (!isNaN(burstTime) && burstTime > 0) addPatient(burstTime);
+        };
+
+        const priorityCounts = [1, 2, 3, 4].map(pk => ({
+          key: pk,
+          count: priorityQueue.filter(e => e.priorityKey === pk).length,
+          meta: PRIORITY_META[pk]
+        }));
+
+        return (
+          <div className="flex flex-col gap-6 h-full">
+            <div className="glass-panel rounded-2xl p-5 border border-slate-200 flex items-center justify-between relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-slate-100 rounded-full blur-2xl -z-10" />
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Trạng thái</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`w-2.5 h-2.5 rounded-full ${isPlaying ? 'bg-emerald-500 pulse-indicator text-emerald-500' : 'bg-amber-500 text-amber-500'}`} />
+                  <span className="font-bold text-lg text-slate-700">{isPlaying ? 'Đang chạy' : 'Tạm dừng'}</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 items-end">
+                <div className="flex flex-col items-end">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Semaphore</span>
+                  <span className="text-xl font-mono font-bold mt-0.5 text-slate-700 bg-slate-100 px-3 py-0.5 rounded-md border border-slate-200">
+                    {semaphoreValue} / 2
+                  </span>
+                </div>
+                {labQueue.length > 0 && (
+                  <div className="flex items-center gap-1.5 text-[10px] bg-violet-50 border border-violet-200 text-violet-700 px-2 py-1 rounded-lg font-semibold">
+                    <Icon name="flask-conical" size={11} />
+                    <span>{labQueue.length} đang XN</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="glass-panel rounded-2xl p-6 border border-slate-200 flex flex-col gap-4">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <Icon name="activity" size={16} /> Bảng Điều Khiển
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                <button onClick={() => setPlaying(true)} disabled={isPlaying}
+                  className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all duration-200 ${isPlaying ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' : 'bg-emerald-650 hover:bg-emerald-500 border-emerald-500 text-white shadow-sm hover:scale-[1.02]'}`}>
+                  <Icon name="play" size={18} fill={!isPlaying ? 'currentColor' : 'none'} />
+                  <span className="text-xs font-semibold">Bắt đầu</span>
+                </button>
+                <button onClick={() => setPlaying(false)} disabled={!isPlaying}
+                  className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all duration-200 ${!isPlaying ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' : 'bg-amber-650 hover:bg-amber-500 border-amber-500 text-white shadow-sm hover:scale-[1.02]'}`}>
+                  <Icon name="pause" size={18} fill={isPlaying ? 'currentColor' : 'none'} />
+                  <span className="text-xs font-semibold">Tạm dừng</span>
+                </button>
+                <button onClick={resetSimulation}
+                  className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-750 transition-all duration-200 hover:scale-[1.02] shadow-sm">
+                  <Icon name="rotate-ccw" size={18} />
+                  <span className="text-xs font-semibold">Đặt lại</span>
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2 mt-2">
+                <label className="text-xs font-semibold text-slate-500 flex items-center justify-between">
+                  <span>Tốc độ mô phỏng</span>
+                  <span className="text-slate-700 font-bold font-mono">x{speedMultiplier}</span>
+                </label>
+                <div className="grid grid-cols-4 gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  {[1, 2, 5, 10].map(m => (
+                    <button key={m} onClick={() => setSpeedMultiplier(m)}
+                      className={`py-1.5 text-xs font-bold font-mono rounded-lg transition-all duration-150 ${speedMultiplier === m ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'}`}>
+                      {m}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-panel rounded-2xl p-6 border border-slate-200 flex flex-col gap-4 flex-1">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <Icon name="settings" size={16} /> Điều phối Bệnh nhân
+              </h3>
+
+              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold text-slate-700">Tự động tạo bệnh nhân</span>
+                  <span className="text-xs text-slate-400">Tuổi ngẫu nhiên → Ưu tiên tự tính</span>
+                </div>
+                <button onClick={() => setAutoGenerate(!autoGenerate)}
+                  className={`w-12 h-6 flex items-center rounded-full p-1 transition-all duration-300 ${autoGenerate ? 'bg-slate-800' : 'bg-slate-200'}`}>
+                  <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-all duration-300 ${autoGenerate ? 'translate-x-6' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              <form onSubmit={handleManualAdd} className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-slate-500">Thời gian khám (Burst Time — giây)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number" min="1" max="30" value={burstInput}
+                    onChange={e => setBurstInput(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:border-slate-400/80 flex-1 shadow-sm"
+                  />
+                  <button type="submit"
+                    className="bg-slate-800 hover:bg-slate-900 text-white px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.02]">
+                    <Icon name="user-plus" size={16} />
+                    <span className="text-xs font-semibold">Thêm</span>
+                  </button>
+                </div>
+                <span className="text-[10px] text-slate-400">Tuổi random (18–90) → tính mức ưu tiên tự động.</span>
+              </form>
+
+              {priorityQueue.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Phân bổ trong hàng đợi</span>
+                  {priorityCounts.filter(pc => pc.count > 0).map(({ key, count, meta }) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${meta.bg} ${meta.text} ${meta.border}`}>
+                        {meta.emoji} P{key}
+                      </span>
+                      <div className="flex-1 bg-slate-100 rounded-full h-1.5 border border-slate-200">
+                        <div className={`h-full rounded-full transition-all duration-300 ${meta.dot}`}
+                          style={{ width: `${(count / priorityQueue.length) * 100}%` }} />
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-slate-500 w-4 text-right">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-auto pt-4 border-t border-slate-200 flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Bảng mức ưu tiên</span>
+                {[1, 2, 3, 4].map(pk => {
+                  const m = PRIORITY_META[pk];
+                  return (
+                    <div key={pk} className="flex items-center gap-2 text-[10px]">
+                      <span className={`font-bold px-1.5 py-0.5 rounded border ${m.bg} ${m.text} ${m.border}`}>{m.emoji} P{pk}</span>
+                      <span className="text-slate-500">{m.detail}</span>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center gap-2 text-[10px] mt-2 pt-2 border-t border-slate-100 text-slate-400">
+                  <Icon name="zap" size={11} className="text-yellow-500" />
+                  <span>Cùng ưu tiên → FCFS (ai vào trước ra trước)</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                  <Icon name="zap" size={11} className="text-violet-400" />
+                  <span>Bệnh nhân &gt;40t: 40% xác suất đi XN sau khám</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // =========================================================================
+      // 5. ANALYTICS PANEL COMPONENT
+      // =========================================================================
+      function AnalyticsPanel({ state }) {
+        const { patients, clock, logs } = state;
+
+        const waitingPatients = patients.filter(p => p.startTime !== null);
+        const totalWaitTime = waitingPatients.reduce(
+          (acc, p) => acc + (p.startTime - p.arrivalTime),
+          0
+        );
+        const avgWaitTime = waitingPatients.length > 0 
+          ? (totalWaitTime / waitingPatients.length).toFixed(1) 
+          : '0.0';
+
+        const completedPatients = patients.filter(p => p.endTime !== null);
+        const totalTurnaroundTime = completedPatients.reduce(
+          (acc, p) => acc + (p.endTime - p.arrivalTime),
+          0
+        );
+        const avgTurnaroundTime = completedPatients.length > 0 
+          ? (totalTurnaroundTime / completedPatients.length).toFixed(1) 
+          : '0.0';
+
+        return (
+          <div className="flex flex-col gap-6 h-full">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="glass-panel rounded-2xl p-5 border border-slate-200 relative overflow-hidden flex flex-col justify-between">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full blur-xl -z-10" />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Thời gian Chờ TB</span>
+                  <span className="text-[10px] font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    T_chờ
+                  </span>
+                </div>
+
+                <div className="mt-3 flex items-baseline gap-1">
+                  <span className="text-3xl font-extrabold text-amber-600 font-mono">
+                    {avgWaitTime}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500">s</span>
+                </div>
+
+                <div className="mt-2 border-t border-slate-200 pt-2 flex flex-col gap-1">
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    Công thức: T_chờ = t_bắtđầu - t_đến
+                  </span>
+                  <span className="text-[9px] text-slate-500 flex items-center gap-1">
+                    <Icon name="users" size={10} /> Tính từ {waitingPatients.length} bệnh nhân
+                  </span>
+                </div>
+              </div>
+
+              <div className="glass-panel rounded-2xl p-5 border border-slate-200 relative overflow-hidden flex flex-col justify-between">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-500/5 rounded-full blur-xl -z-10" />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Thời gian khám TB</span>
+                  <span className="text-[10px] font-mono text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
+                    T_hoànthành
+                  </span>
+                </div>
+
+                <div className="mt-3 flex items-baseline gap-1">
+                  <span className="text-3xl font-extrabold text-cyan-600 font-mono">
+                    {avgTurnaroundTime}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500">s</span>
+                </div>
+
+                <div className="mt-2 border-t border-slate-200 pt-2 flex flex-col gap-1">
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    Công thức: T_ht = t_kếtthúc - t_đến
+                  </span>
+                  <span className="text-[9px] text-slate-500 flex items-center gap-1">
+                    <Icon name="check-circle" size={10} className="text-emerald-650" /> Đã xong: {completedPatients.length} bệnh nhân
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-panel rounded-2xl p-5 border border-slate-200 shadow-sm">
+              <GanttChart patients={patients} clock={state.clock} />
+            </div>
+
+            <div className="glass-panel rounded-2xl p-5 border border-slate-200 flex-1 flex flex-col shadow-sm">
+              <TerminalLog logs={logs} />
+            </div>
+          </div>
+        );
+      }
+
+      // =========================================================================
+      // MAIN APP EXPORT
+      // =========================================================================
+      function App() {
+        const {
+          state,
+          addPatient,
+          resetSimulation,
+          setPlaying,
+          setSpeedMultiplier,
+          setAutoGenerate
+        } = useClinicSimulation();
+
+        const [showExplanation, setShowExplanation] = useState(true);
+
+        return (
+          <div className="bg-slate-50 text-slate-800 flex flex-col p-4 md:p-6 lg:p-8 gap-6 max-w-7xl mx-auto pb-10">
+            <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 glow-cyan">
+                  <Icon name="cpu" size={24} className="animate-spin-slow text-slate-600" />
+                </div>
+                <div>
+                  <h1 className="text-xl md:text-2xl font-extrabold tracking-tight bg-gradient-to-r from-slate-900 via-slate-800 to-slate-600 bg-clip-text text-transparent">
+                    Điều Phối Phòng Khám HĐH
+                  </h1>
+                  <p className="text-xs text-slate-500 font-semibold tracking-wide uppercase mt-0.5">
+                    Priority Queue + FCFS Tie-breaking & Semaphore
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl px-5 py-2.5 shadow-sm">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold tracking-wider text-slate-400 uppercase">Thời gian ảo</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full bg-emerald-500 ${state.isPlaying ? 'animate-ping' : ''}`} />
+                    <span className="font-mono text-2xl font-black text-slate-700 tracking-wider">
+                      {formatClock(state.clock)}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowExplanation(!showExplanation)}
+                  className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-950 transition-all text-slate-600 flex items-center gap-1.5 text-xs font-semibold shadow-sm"
+                >
+                  <Icon name="book-open" size={16} />
+                  <span className="hidden sm:inline">Khái niệm OS</span>
+                </button>
+              </div>
+            </header>
+
+            {showExplanation && (
+              <div className="glass-panel rounded-2xl p-5 border border-slate-200 relative overflow-hidden animate-slide-in shadow-sm">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-slate-100 rounded-full blur-3xl -z-10" />
+                <div className="flex justify-between items-start mb-3">
+                  <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <Icon name="help-circle" size={16} /> Liên hệ với khái niệm Hệ Điều Hành
+                  </h2>
+                  <button
+                    onClick={() => setShowExplanation(false)}
+                    className="text-xs text-slate-500 hover:text-slate-800 font-semibold px-2 py-0.5 rounded-md hover:bg-slate-100"
+                  >
+                    Đóng
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 text-xs leading-relaxed text-slate-600">
+                  <div className="flex flex-col gap-1 p-3 bg-red-50/50 rounded-xl border border-red-200">
+                    <h3 className="font-bold text-red-800">🔴 Ưu tiên 1 — Cao nhất</h3>
+                    <p>Người <strong>trên 60 tuổi</strong> đã có <strong>kết quả xét nghiệm</strong> trở về. Được xếp đầu hàng đợi, khám ngay khi có phòng trống.</p>
+                  </div>
+                  <div className="flex flex-col gap-1 p-3 bg-orange-50/50 rounded-xl border border-orange-200">
+                    <h3 className="font-bold text-orange-800">🟠 Ưu tiên 2</h3>
+                    <p>Người <strong>trên 60 tuổi</strong> lần đầu đến khám. Sau khi khám, 40% xác suất được chỉ định đi lấy <strong>kết quả xét nghiệm</strong>.</p>
+                  </div>
+                  <div className="flex flex-col gap-1 p-3 bg-amber-50/50 rounded-xl border border-amber-200">
+                    <h3 className="font-bold text-amber-800">🟡 Ưu tiên 3</h3>
+                    <p>Người <strong>40–60 tuổi</strong> có kết quả xét nghiệm trở về. Tương tự P1 nhưng ưu tiên thấp hơn — được thăng cấp từ P4 sau khi xét nghiệm.</p>
+                  </div>
+                  <div className="flex flex-col gap-1 p-3 bg-blue-50/50 rounded-xl border border-blue-200">
+                    <h3 className="font-bold text-blue-800">🔵 Ưu tiên 4 — Thấp nhất</h3>
+                    <p>Người <strong>dưới 40 tuổi</strong> (tối thiểu 18t) hoặc bệnh nhân thông thường. Nếu cùng ưu tiên → áp dụng <strong>FCFS tie-breaking</strong>.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-12 gap-6 items-stretch flex-1">
+              <section className="col-span-12 lg:col-span-4 xl:col-span-3">
+                <ControlCenter
+                  state={state}
+                  addPatient={addPatient}
+                  resetSimulation={resetSimulation}
+                  setPlaying={setPlaying}
+                  setSpeedMultiplier={setSpeedMultiplier}
+                  setAutoGenerate={setAutoGenerate}
+                />
+              </section>
+
+              <section className="col-span-12 lg:col-span-8 xl:col-span-5 flex flex-col">
+                <SimulationArena state={state} />
+              </section>
+
+              <section className="col-span-12 xl:col-span-4 flex flex-col">
+                <AnalyticsPanel state={state} />
+              </section>
+            </div>
+
+            <footer className="text-center text-[10px] text-slate-400 mt-auto pt-6 border-t border-slate-200 flex justify-between">
+              <span>Thiết kế phục vụ học tập môn Hệ Điều Hành</span>
+              <span>Priority Queue (Min-Heap) + FCFS Tie-breaking + Semaphore = 2</span>
+            </footer>
+          </div>
+        );
+      }
+
+      // Render React App
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
